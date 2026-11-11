@@ -19,14 +19,19 @@ A research project (ADS 5984) auditing bias in LLM-based resume screening. LLMs 
 - `cv/<tier>/race-<race>_gender-<gender>_age-<band>/NN_resume_<tier>.md`: the demographic variants, with 27 folders per tier. They are **generated, so never edit them by hand**. Change the base resume or the cue table and rebuild.
 - `demographic_cues.json`: the cue table. It holds names by race × gender × age band, home and employer cities, schools, community lines, interests, the reference year, each resume's career length, and degree-year overrides.
 - `make_variants.py`: builds every variant from the base resumes and the cue table. It also writes `cv/variants_manifest.json`, which records each file's name, age, degree years, and earlier-career span.
-- `run_evaluation.py`: scores every base resume (as the baseline) and all of its variants, then writes `evaluation.json`.
+- `score_resumes.py`: the scoring harness. It scores every base resume (as the baseline) and all variants through the Anthropic-compatible endpoint in `.env` (`ANTHROPIC_ENDPOINT`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`).
+  - It uses only the system prompt and user template from `scoring_system_prompt.md`, with nothing added.
+  - It checkpoints every call to `results/<run>.jsonl`, so an interrupted run resumes where it stopped. It then combines the checkpoint into `results/<run>.json`, the input for the dashboard: run metadata, `summary` aggregates, and one row per resume with cohort fields, per-sample scores, rationale, model reasoning, and `diff_from_baseline`.
+- `run_evaluation.py`: an older scorer that calls `claude -p` and adds a deductions addendum to the prompt. It is superseded by `score_resumes.py`.
 - `backup/`: earlier prompt and listing drafts. These are superseded and kept only for reference.
 
 ## Commands
 
 ```bash
 python3 make_variants.py               # rebuild all 810 variants + manifest (deletes old variant folders)
-python3 run_evaluation.py [model]      # score baselines + variants via `claude -p` (default model: sonnet)
+python3 score_resumes.py               # score baselines + variants -> results/scores.json (resumable)
+python3 score_resumes.py --limit 5 --samples 1 --run-name smoke   # quick smoke test
+python3 score_resumes.py --combine-only                          # rebuild JSON from the checkpoint
 quarto render cto_job_listing.qmd      # render posting to html + pdf (Quarto at /opt/quarto/bin/quarto)
 ```
 
@@ -64,8 +69,9 @@ A full evaluation run makes 840 resumes × 3 samples = 2,520 model calls. Confir
 - First names are rotated across resumes within each cell. White and Black names follow Gaddis 2017 / Elder & Hayes 2023 where possible. The Middle Eastern, non-binary, and age-matched names are not from a validated list, so swap them in `demographic_cues.json` if one is required.
 
 **Scoring**
-- Use one resume per call in a fresh, tool-less context, with the fixed system prompt and the posting verbatim, and 3 samples per resume. Report the temperature (the `claude -p` CLI default).
-- Output is JSON `{"score": <0-100>, "rationale": "...", "deductions": [...]}`, and the deductions must sum to 100 minus the score.
+- Every call starts from a clean context. Each one is a stateless request through a new client, sending the fixed system prompt and exactly one user message, with no history, caching, or conversation IDs. Before each run, `score_resumes.py` checks isolation: it plants a word in one call and probes for it in a separate call, and aborts if the word leaks. The result is stored in the output.
+- Use one resume per call, with only the system prompt from `scoring_system_prompt.md` and the posting verbatim (front matter removed, title kept), and 3 samples per resume. The temperature is fixed at 0.7 by default and recorded in the output.
+- Output is JSON `{"score": <0-100>, "rationale": "..."}`. The model's thinking text is stored as `reasoning` when the endpoint returns it.
 - Log the model ID, timestamp, refusals, and malformed outputs.
 - Report each variant as a difference from the name-free baseline of its own base resume.
 
