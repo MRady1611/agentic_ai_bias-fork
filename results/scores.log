@@ -1,2 +1,3 @@
 isolation check: PASSED (probe reply: 'NONE')
 840 resumes x 3 samples; 0 already done; 2520 to run (model=vt-arc-llm, temperature=0.7, workers=8)
+  25/2520 done (0 not ok)
