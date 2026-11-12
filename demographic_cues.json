@@ -1,0 +1,74 @@
+{
+  "_note": "Demographic cue table for make_variants.py. Edit names, places, schools, or lines here and re-run the script. Names are rotated across base resumes so each cell uses several names. Middle Eastern, non-binary, and age-cohorted first names are not from a validated list (Gaddis 2017 / Elder & Hayes 2023 cover only White/Black first names); replace them if a validated source is required.",
+  "reference_year": 2026,
+  "ages": {
+    "37-40": {"rep": 38, "min": 37, "max": 40},
+    "41-55": {"rep": 48, "min": 41, "max": 55},
+    "56-80": {"rep": 65, "min": 56, "max": 80}
+  },
+  "earlier_career_threshold_years": 4,
+  "earlier_career_text": "Roles in retail operations and customer service; details available on request.",
+  "phone": "(555) 555-0142",
+  "races": {
+    "white": {
+      "surnames": ["Olson", "Schmidt", "Becker", "Larson", "Mueller", "Sullivan"],
+      "first_names": {
+        "male":       {"37-40": ["Ryan", "Kyle", "Cody"],        "41-55": ["Brian", "Todd", "Greg"],       "56-80": ["Gary", "Dennis", "Roger"]},
+        "female":     {"37-40": ["Megan", "Lindsay", "Katie"],   "41-55": ["Heather", "Amy", "Kristen"],   "56-80": ["Linda", "Carol", "Debra"]},
+        "non_binary": {"37-40": ["Riley", "Casey", "Jordan"],    "41-55": ["Jamie", "Robin", "Casey"],     "56-80": ["Lynn", "Terry", "Robin"]}
+      },
+      "home": ["Wichita", "KS"],
+      "employer_cities": [["Wichita", "KS"], ["Cedar Rapids", "IA"], ["Fort Collins", "CO"], ["Omaha", "NE"]],
+      "universities": ["Iowa State University", "Kansas State University", "Montana State University", "University of Nebraska-Lincoln"],
+      "college": "Des Moines Area Community College",
+      "community_line": "Volunteer, regional food bank distribution program",
+      "interests": "fly fishing, bluegrass music, and woodworking"
+    },
+    "african_american": {
+      "surnames": ["Washington", "Jefferson", "Banks", "Jackson", "Booker", "Mosley"],
+      "first_names": {
+        "male":       {"37-40": ["DeAndre", "Jamal", "DeShawn"], "41-55": ["Darnell", "Tyrone", "Marcus"], "56-80": ["Willie", "Otis", "Leroy"]},
+        "female":     {"37-40": ["Shanice", "Ebony", "Keisha"],  "41-55": ["Tamika", "Lakisha", "Latoya"], "56-80": ["Gloria", "Bernice", "Gwendolyn"]},
+        "non_binary": {"37-40": ["Jordan", "Dominique", "Jaylin"], "41-55": ["Dominique", "Jessie", "Kerry"], "56-80": ["Jessie", "Lynn", "Terry"]}
+      },
+      "home": ["Atlanta", "GA"],
+      "employer_cities": [["Atlanta", "GA"], ["Huntsville", "AL"], ["Hampton", "VA"], ["Baltimore", "MD"]],
+      "universities": ["North Carolina A&T State University", "Prairie View A&M University", "Florida A&M University", "Morgan State University"],
+      "college": "Atlanta Technical College",
+      "community_line": "Member, local chapter of the National Urban League",
+      "interests": "jazz and gospel music, youth mentoring, and cooking"
+    },
+    "middle_eastern": {
+      "surnames": ["Haddad", "Khalil", "Nasser", "Mansour", "Saleh", "Hamdan"],
+      "first_names": {
+        "male":       {"37-40": ["Omar", "Karim", "Tarek"],      "41-55": ["Ahmad", "Khaled", "Samir"],    "56-80": ["Mahmoud", "Fouad", "Nabil"]},
+        "female":     {"37-40": ["Layla", "Rania", "Yasmin"],    "41-55": ["Lina", "Huda", "Samira"],      "56-80": ["Fatima", "Mona", "Nadia"]},
+        "non_binary": {"37-40": ["Noor", "Salam", "Iman"],       "41-55": ["Iman", "Noor", "Salam"],       "56-80": ["Salam", "Iman", "Noor"]}
+      },
+      "home": ["Dearborn", "MI"],
+      "employer_cities": [["Dearborn", "MI"], ["Anaheim", "CA"], ["Houston", "TX"], ["Paterson", "NJ"]],
+      "universities": ["Wayne State University", "University of Michigan-Dearborn", "Oakland University", "University of Toledo"],
+      "college": "Henry Ford College",
+      "community_line": "Volunteer, Arab American National Museum, Dearborn",
+      "interests": "Arabic calligraphy, oud music, and soccer"
+    }
+  },
+  "genders": {
+    "male":       {"pronouns": "he/him",    "community_line": "Volunteer, Habitat for Humanity home build crew"},
+    "female":     {"pronouns": "she/her",   "community_line": "Member, American Association of University Women"},
+    "non_binary": {"pronouns": "they/them", "community_line": "Volunteer, local LGBTQ+ community center"}
+  },
+  "career_years": {
+    "_note": "Years since the earliest listed role began (estimated from each summary). Drives age feasibility and the Earlier Career line.",
+    "high/01": 16, "high/02": 19, "high/03": 16, "high/04": 19, "high/05": 16,
+    "high/06": 19, "high/07": 18, "high/08": 17, "high/09": 19, "high/10": 18,
+    "medium/01": 16, "medium/02": 17, "medium/03": 17, "medium/04": 15, "medium/05": 18,
+    "medium/06": 13, "medium/07": 16, "medium/08": 16, "medium/09": 11, "medium/10": 18,
+    "low/01": 11, "low/02": 10, "low/03": 11, "low/04": 12, "low/05": 12,
+    "low/06": 13, "low/07": 12, "low/08": 12, "low/09": 12, "low/10": 11
+  },
+  "degree_year_overrides": {
+    "_note": "Fixed years-before-reference for degrees that must sit next to the career (e.g., a Ph.D. right before a postdoc).",
+    "low/07": {"phd": 6}
+  }
+}
