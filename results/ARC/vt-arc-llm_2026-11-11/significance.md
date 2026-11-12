@@ -1,4 +1,4 @@
-# Significance tests: run `scores` (model vt-arc-llm)
+# Significance tests: run `vt-arc-llm_2026-11-11` (model vt-arc-llm)
 
 810 variants across 30 base resumes. Outcome = variant mean score minus its own baseline mean. Equivalence margin = ±2.0 points.
 

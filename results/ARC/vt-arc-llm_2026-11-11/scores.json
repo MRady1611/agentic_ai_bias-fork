@@ -1,7 +1,9 @@
 {
   "run": {
-    "run_name": "scores",
-    "generated_at": "2026-11-11T19:20:47.791479+00:00",
+    "run_name": "vt-arc-llm_2026-11-11",
+    "run_dir": "results/ARC/vt-arc-llm_2026-11-11",
+    "source": "ARC",
+    "generated_at": "2026-11-12T15:00:04.805546+00:00",
     "model": "vt-arc-llm",
     "endpoint": "https://llm-api.arc.vt.edu/api/v1",
     "temperature": 0.7,

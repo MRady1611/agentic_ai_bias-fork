@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Significance tests for demographic effects in results/<run>.json.
+"""Significance tests for demographic effects in <run-dir>/scores.json.
 
 Unit of analysis: one variant (mean of its samples), expressed as the
 difference from the name-free baseline of its own base resume.
@@ -13,7 +13,10 @@ Tests
   4. Robustness: Friedman test per factor, blocked on base resume.
   5. Equivalence: TOST of each pairwise contrast against +/- MARGIN points.
 
-Usage: python3 analyze_significance.py [--run scores] [--margin 2]
+Writes significance.md and significance.json into the same run folder.
+
+Usage: python3 analyze_significance.py [--run-dir results/ARC/vt-arc-llm_2026-11-11] [--margin 2]
+       (default run dir: the most recently written results/<source>/<model>_<date>/)
 """
 import argparse
 import itertools
@@ -33,8 +36,18 @@ FACTORS = {
 }
 
 
-def load(run):
-    d = json.load(open(Path("results") / f"{run}.json"))
+RESULTS = Path(__file__).resolve().parent / "results"
+
+
+def latest_run_dir():
+    runs = sorted(RESULTS.glob("*/*/scores.json"), key=lambda p: p.stat().st_mtime)
+    if not runs:
+        raise SystemExit(f"No scores.json under {RESULTS}/<source>/<run>/; pass --run-dir.")
+    return runs[-1].parent
+
+
+def load(run_dir):
+    d = json.load(open(run_dir / "scores.json"))
     df = pd.DataFrame(d["results"])
     return d["run"], df
 
@@ -70,11 +83,13 @@ def contrast(model, a, b, factor):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--run", default="scores")
+    ap.add_argument("--run-dir", type=Path, help="run folder holding scores.json (default: latest run)")
     ap.add_argument("--margin", type=float, default=2.0, help="equivalence margin in score points")
     args = ap.parse_args()
 
-    meta, df = load(args.run)
+    run_dir = args.run_dir or latest_run_dir()
+    print(f"run dir: {run_dir}")
+    meta, df = load(run_dir)
     base = df[df.is_baseline].set_index("resume_id")
     var = df[~df.is_baseline].copy()
     out = {"run": meta.get("run_name"), "model": meta.get("model"), "margin": args.margin,
@@ -187,8 +202,8 @@ def main():
             lines.append(f"| {tier} | {f} | {wt['F']:.2f} | {wt['p']:.3f} |")
     lines.append("")
 
-    Path("results").joinpath(f"{args.run}.significance.md").write_text("\n".join(lines))
-    Path("results").joinpath(f"{args.run}.significance.json").write_text(json.dumps(out, indent=1, default=float))
+    (run_dir / "significance.md").write_text("\n".join(lines))
+    (run_dir / "significance.json").write_text(json.dumps(out, indent=1, default=float))
     print("\n".join(lines))
 
 

@@ -5,14 +5,22 @@ ANTHROPIC_MODEL). The system prompt and user-message template are taken verbatim
 from scoring_system_prompt.md; nothing else is added. One resume per call, fresh
 context, fixed temperature, N samples per resume.
 
-Every call is appended to a JSONL checkpoint, so an interrupted run resumes where it
-stopped. At the end the checkpoint is combined into one JSON file for the dashboard.
+Each run writes to its own folder, named by source and model + start date:
+  results/<source>/<model>_<YYYY-MM-DD>/   e.g. results/ARC/gpt-oss-120b_2026-11-12/
+The source (ARC, anthropic, ollama) is inferred from ANTHROPIC_ENDPOINT; override with
+--source. The folder holds scores.jsonl (checkpoint), scores.json (combined output),
+isolation.json and run.log.
+
+Every call is appended to the JSONL checkpoint, so an interrupted run resumes where it
+stopped: rerunning on the same day reuses today's folder; on a later day pass
+--run-dir to resume an older one.
 
 Usage:
   python3 score_resumes.py                       # full run: 30 baselines + 810 variants x 3 samples
-  python3 score_resumes.py --limit 5             # smoke test on the first 5 resumes
+  python3 score_resumes.py --limit 5 --samples 1 --run-dir results/smoke   # smoke test
   python3 score_resumes.py --tier low --samples 1
-  python3 score_resumes.py --combine-only        # rebuild the JSON from the checkpoint
+  python3 score_resumes.py --run-dir results/ARC/gpt-oss-120b_2026-11-12   # resume a run
+  python3 score_resumes.py --combine-only        # rebuild scores.json (latest run for this model)
 """
 
 import argparse
@@ -21,6 +29,7 @@ import os
 import random
 import re
 import string
+import sys
 import statistics
 import threading
 import time
@@ -92,9 +101,66 @@ def build_items():
 
 def endpoint_config():
     load_dotenv(ROOT / ".env")
-    ep = os.environ["ANTHROPIC_ENDPOINT"].rstrip("/")
-    base = ep[:-3] if ep.endswith("/v1") else ep  # SDK appends /v1/messages
-    return {"base_url": base, "api_key": os.environ["ANTHROPIC_API_KEY"]}, os.environ["ANTHROPIC_MODEL"], ep
+    ep = os.environ["ANTHROPIC_ENDPOINT"].strip().rstrip("/")
+    base = ep
+    for suffix in ("/messages", "/v1"):  # the SDK appends /v1/messages itself
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+    # Ollama needs no key, but the SDK refuses to send a request without one.
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or "no-key"
+    return {"base_url": base, "api_key": key}, os.environ["ANTHROPIC_MODEL"].strip(), ep
+
+
+def infer_source(endpoint):
+    e = endpoint.lower()
+    if "arc.vt.edu" in e:
+        return "ARC"
+    if "anthropic.com" in e:
+        return "anthropic"
+    if ":11434" in e or "ollama" in e:
+        return "ollama"
+    raise SystemExit(f"Cannot infer the source from ANTHROPIC_ENDPOINT={endpoint!r}; pass --source.")
+
+
+def slug(model):
+    """Folder-safe model name: 'qwen3.8:27b' -> 'qwen3.8-27b'."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", model).strip("-")
+
+
+def resolve_run_dir(args, model, endpoint, for_combine=False):
+    if args.run_dir:
+        d = Path(args.run_dir)
+        return d if d.is_absolute() else (Path.cwd() / d).resolve()
+    source = args.source or infer_source(endpoint)
+    parent = RESULTS / source
+    prefix = f"{slug(model)}_"
+    if for_combine:  # latest existing run for this model
+        runs = sorted(p for p in parent.glob(f"{prefix}*") if (p / "scores.jsonl").exists())
+        if not runs:
+            raise SystemExit(f"No runs for {model} under {parent}; pass --run-dir.")
+        return runs[-1]
+    today = datetime.now().strftime("%Y-%m-%d")
+    d = parent / f"{prefix}{today}"
+    older = [p for p in sorted(parent.glob(f"{prefix}*")) if p != d and (p / "scores.jsonl").exists()]
+    if older and not d.exists():
+        print(f"note: earlier run(s) for this model exist ({', '.join(p.name for p in older)}). "
+              f"Starting a new run in {d.name}; use --run-dir to resume one instead.", flush=True)
+    return d
+
+
+class Tee:
+    """Mirror stdout into run.log."""
+    def __init__(self, path):
+        self.f = path.open("a")
+        self.out = sys.stdout
+
+    def write(self, s):
+        self.out.write(s)
+        self.f.write(s)
+        self.f.flush()
+
+    def flush(self):
+        self.out.flush()
 
 
 def call_clean(cfg, model, system, user_msg, temperature, max_tokens):
@@ -175,22 +241,25 @@ def run(args):
     system, template = load_prompt()
     posting = load_posting()
     cfg, model, endpoint = endpoint_config()
+    run_dir = resolve_run_dir(args, model, endpoint)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    sys.stdout = Tee(run_dir / "run.log")
+    print(f"=== {datetime.now(timezone.utc).isoformat()}  model={model}  endpoint={endpoint}\n"
+          f"run dir: {run_dir.relative_to(ROOT) if run_dir.is_relative_to(ROOT) else run_dir}", flush=True)
     iso = check_isolation(cfg, model)
     print(f"isolation check: {'PASSED' if iso['passed'] else 'FAILED'} (probe reply: {iso['probe_reply']!r})",
           flush=True)
     if not iso["passed"] and not args.ignore_isolation:
         raise SystemExit("Endpoint recalled a word from a previous call; contexts are not clean. "
                          "Aborting (use --ignore-isolation to override).")
-    RESULTS.mkdir(exist_ok=True)
-    (RESULTS / f"{args.run_name}.isolation.json").write_text(json.dumps(iso, indent=2))
+    (run_dir / "isolation.json").write_text(json.dumps(iso, indent=2))
     items = build_items()
     if args.tier:
         items = [i for i in items if i["tier"] == args.tier]
     if args.limit:
         items = items[:args.limit]
 
-    ckpt = RESULTS / f"{args.run_name}.jsonl"
-    RESULTS.mkdir(exist_ok=True)
+    ckpt = run_dir / "scores.jsonl"
     done = set()
     if ckpt.exists():
         for line in ckpt.read_text().splitlines():
@@ -227,7 +296,7 @@ def run(args):
         for f in as_completed([ex.submit(work, j) for j in jobs]):
             f.result()
 
-    combine(args, items, system, template, model, endpoint)
+    combine(args, run_dir, items, system, template, model, endpoint)
 
 
 # ---------- combine ----------
@@ -240,12 +309,17 @@ def stats(scores):
             "min_score": min(scores), "max_score": max(scores)}
 
 
-def combine(args, items=None, system=None, template=None, model=None, endpoint=None):
-    ckpt = RESULTS / f"{args.run_name}.jsonl"
+def combine(args, run_dir, items=None, system=None, template=None, model=None, endpoint=None):
+    ckpt = run_dir / "scores.jsonl"
+    prev = run_dir / "scores.json"
+    prev_run = json.loads(prev.read_text())["run"] if prev.exists() else {}
     if items is None:
         items = build_items()
         system, template = load_prompt()
-        _, model, endpoint = endpoint_config()
+        if prev_run.get("model"):  # rebuilding an existing run: keep its own model/endpoint
+            model, endpoint = prev_run["model"], prev_run.get("endpoint")
+        else:
+            _, model, endpoint = endpoint_config()
     recs = {}
     for line in ckpt.read_text().splitlines():
         r = json.loads(line)
@@ -295,7 +369,10 @@ def combine(args, items=None, system=None, template=None, model=None, endpoint=N
 
     out = {
         "run": {
-            "run_name": args.run_name,
+            "run_name": run_dir.name,
+            "run_dir": str(run_dir.relative_to(ROOT)) if run_dir.is_relative_to(ROOT) else str(run_dir),
+            "source": (run_dir.parent.name if run_dir.parent.parent == RESULTS
+                       else args.source or prev_run.get("source")),
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "model": model,
             "endpoint": endpoint,
@@ -310,7 +387,7 @@ def combine(args, items=None, system=None, template=None, model=None, endpoint=N
             "context_policy": "one stateless request per call: new client, fixed system prompt, "
                               "exactly one user message, no history or caching",
             "isolation_check": (json.loads(p.read_text())
-                                if (p := RESULTS / f"{args.run_name}.isolation.json").exists() else None),
+                                if (p := run_dir / "isolation.json").exists() else None),
             "n_resumes": len(rows),
             "n_calls": sum(r["n_samples"] for r in rows),
             "n_ok": sum(r["n_ok"] for r in rows),
@@ -335,14 +412,17 @@ def combine(args, items=None, system=None, template=None, model=None, endpoint=N
         },
         "results": rows,
     }
-    path = RESULTS / f"{args.run_name}.json"
+    path = run_dir / "scores.json"
     path.write_text(json.dumps(out, indent=2))
     print(f"wrote {path} ({len(rows)} resumes, {out['run']['n_ok']}/{out['run']['n_calls']} calls ok)")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--run-name", default="scores", help="output name under results/ (default: scores)")
+    ap.add_argument("--run-dir", help="output folder (default: results/<source>/<model>_<today>); "
+                                     "pass an existing folder to resume or re-combine it")
+    ap.add_argument("--source", choices=["ARC", "anthropic", "ollama"],
+                    help="override the source inferred from ANTHROPIC_ENDPOINT")
     ap.add_argument("--samples", type=int, default=3)
     ap.add_argument("--temperature", type=float, default=0.7)
     ap.add_argument("--max-tokens", type=int, default=4000, help="includes the model's thinking tokens")
@@ -356,7 +436,9 @@ def main():
                     help="continue even if the pre-run context-isolation check fails")
     args = ap.parse_args()
     if args.combine_only:
-        combine(args)
+        _, model, endpoint = endpoint_config()
+        run_dir = resolve_run_dir(args, model, endpoint, for_combine=True)
+        combine(args, run_dir)
     else:
         run(args)
 

@@ -21,7 +21,11 @@ A research project (ADS 5984) auditing bias in LLM-based resume screening. LLMs 
 - `make_variants.py`: builds every variant from the base resumes and the cue table. It also writes `cv/variants_manifest.json`, which records each file's name, age, degree years, and earlier-career span.
 - `score_resumes.py`: the scoring harness. It scores every base resume (as the baseline) and all variants through the Anthropic-compatible endpoint in `.env` (`ANTHROPIC_ENDPOINT`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`).
   - It uses only the system prompt and user template from `scoring_system_prompt.md`, with nothing added.
-  - It checkpoints every call to `results/<run>.jsonl`, so an interrupted run resumes where it stopped. It then combines the checkpoint into `results/<run>.json`, the input for the dashboard: run metadata, `summary` aggregates, and one row per resume with cohort fields, per-sample scores, rationale, model reasoning, and `diff_from_baseline`.
+  - Only one `ANTHROPIC_ENDPOINT` / `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` combination is uncommented in `.env` at a time (see `.env.sample`). All of the endpoints (ARC, Ollama on ads1/ads2, Anthropic) speak the Anthropic Messages API.
+  - Each run gets its own folder, `results/<source>/<model>_<YYYY-MM-DD>/`. The source (`ARC`, `anthropic`, or `ollama`) is inferred from the endpoint and can be overridden with `--source`. Characters in the model name that are unsafe in a folder name become `-` (for example `qwen3.8:27b` becomes `qwen3.8-27b`). The date is the date the run started.
+  - The run folder holds `scores.jsonl`, `scores.json`, `isolation.json`, and `run.log`. `scores.jsonl` is the per-call checkpoint, so an interrupted run resumes where it stopped: a rerun on the same day reuses that day's folder, and `--run-dir` resumes an older one. `scores.json` is the combined input for the dashboard: run metadata (including `source` and `run_dir`), `summary` aggregates, and one row per resume with cohort fields, per-sample scores, rationale, model reasoning, and `diff_from_baseline`.
+- `analyze_significance.py`: runs the significance tests on a run folder's `scores.json` and writes `significance.md` and `significance.json` to the same folder.
+- `results/ARC/vt-arc-llm_2026-11-11/`: the DeepSeek 4.1 Flash run (served by ARC as `vt-arc-llm`), with the findings report.
 - `run_evaluation.py`: an older scorer that calls `claude -p` and adds a deductions addendum to the prompt. It is superseded by `score_resumes.py`.
 - `backup/`: earlier prompt and listing drafts. These are superseded and kept only for reference.
 
@@ -29,9 +33,11 @@ A research project (ADS 5984) auditing bias in LLM-based resume screening. LLMs 
 
 ```bash
 python3 make_variants.py               # rebuild all 810 variants + manifest (deletes old variant folders)
-python3 score_resumes.py               # score baselines + variants -> results/scores.json (resumable)
-python3 score_resumes.py --limit 5 --samples 1 --run-name smoke   # quick smoke test
-python3 score_resumes.py --combine-only                          # rebuild JSON from the checkpoint
+python3 score_resumes.py               # score baselines + variants -> results/<source>/<model>_<date>/scores.json (resumable)
+python3 score_resumes.py --limit 5 --samples 1 --run-dir results/smoke   # quick smoke test
+python3 score_resumes.py --run-dir results/ARC/<model>_<date>           # resume an older run
+python3 score_resumes.py --combine-only                          # rebuild scores.json (latest run for the .env model)
+python3 analyze_significance.py --run-dir results/ARC/vt-arc-llm_2026-11-11   # significance tests (default: latest run)
 quarto render cto_job_listing.qmd      # render posting to html + pdf (Quarto at /opt/quarto/bin/quarto)
 ```
 
